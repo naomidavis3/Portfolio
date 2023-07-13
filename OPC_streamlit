@@ -1,0 +1,270 @@
+import streamlit as st 
+import pandas as pd 
+import shap
+import string
+import matplotlib.pyplot as plt 
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import f1_score
+from sklearn import datasets
+import pickle
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+import joblib
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import classification_report
+from sklearn.linear_model import LogisticRegression
+import seaborn as sns
+from pandas_profiling import ProfileReport
+from streamlit_pandas_profiling import st_profile_report
+from datetime import date
+
+
+
+
+
+st.write('''Naomi Davis    
+            '''
+            )
+st.write('''Madonna University''')
+st.write('''Professor Bean''')
+
+st.write('---')
+
+st.header("""
+     **OPC business insights**
+""")
+
+st.write("""
+# About This Application 
+
+This application is designed to give OPC further insgiht on the churn going on within the organization, as well as what they can expect in revenue moving forward. 
+""")
+
+
+st.write('---')
+
+
+# IMPORTING DATA 
+
+
+from sqlalchemy import create_engine
+import pandas as pd
+
+conn_string = ("postgresql+psycopg2://{username}:{pwd}"
+              "@{host}:{port}/{database}")
+
+
+try:
+    db_string = "postgresql://postgres:password@localhost:5432/postgres"
+    db = create_engine(db_string)
+    print('Database loaded successfully!')
+except:
+    print('Failure connecting and loading the database. Please check your db_string settings and retry.')
+
+engine = create_engine('postgresql://postgres:password@localhost:5432/postgres')
+
+
+df = pd.read_sql_table('finalchurn', con=engine) 
+
+
+###### SECTION FOR EDA 
+
+st.write("""
+# EDA
+
+""")
+
+st.write('---')
+
+st.header('Data Table')
+st.write(df)
+
+
+pr = ProfileReport(df, explorative=True)
+st.header('** Pandas Profiling Report**')
+st_profile_report(pr)
+
+st.write('---')
+
+
+
+def removehash(value):
+    value = value[1:]
+    return str(value)
+
+df['cus_income'] = df['cus_income'].apply(removehash)
+
+def removehash(value):
+    value=value[:-3]
+    return str(value)
+
+df['cus_income'] = df['cus_income'].apply(removehash)
+
+sns.kdeplot(
+    data = df,
+    x = "order_tot",
+    hue="churn",
+    multiple = "stack",
+)
+plt.title("")
+st.pyplot(plt.gcf())
+
+st.write(
+    'This graph shows us the relationship between a customers total order amount and whether or not they churned  '
+)
+
+
+
+
+
+
+###### SIDE BAR 
+
+st.sidebar.header('Customer Information')
+
+
+
+
+# BUILDING AND APPLYING MODEL
+
+
+
+X = df[['order_tot', 'warehouse_id', 'purchase_method', 'tot_ord_qty']]
+y = df[['churn']]
+
+X_train, X_test, y_train, y_test = train_test_split(
+X, y, test_size=0.25, random_state=42, stratify=y)
+
+clf = RandomForestClassifier(n_estimators=100)
+
+clf.fit(X_train, y_train)
+
+y_pred = clf.predict(X_test)
+
+accuracy = accuracy_score(y_test, y_pred)
+print(f"Accuracy: {accuracy}") 
+
+
+
+st.title('Predicting Probability of Churn')
+st.markdown('Using the sliders to the left, you are able to predict whether or not the customer will churn with a 75% accuracy. By changing each slider, you are able to get very specific values and view the results in this section.  ')
+
+joblib.dump(clf, "rf_model.sav")
+
+
+
+col1, col2, col3, col4 = st.columns(4)
+with col1: 
+    st.sidebar.text("Order Total")
+    order_tot = st.sidebar.slider('Order Total($)', 0.00, 753.00, 370.00)
+with col2:
+    st.sidebar.text("Warehouse ID")
+    warehouse_id = st.sidebar.slider('Warehouse ID', 1.00, 3.00, 2.00)
+with col3:
+    st.sidebar.text("Financed Purchase")
+    financed_purchase = st.sidebar.slider('Financed Purchase', 0.00, 1.00, 0.00)
+with col4:
+    st.sidebar.text("Total Order Qauntity")
+    cus_income = st.sidebar.slider('Order Quantity', 0.00, 100.00, 200.00)
+
+
+
+
+import joblib
+def predict(data):
+    clf= joblib.load("rf_model.sav")
+    return clf.predict(data)
+ 
+
+if st.sidebar.button("Predict Churn Probability"):
+    result = predict(np.array([[order_tot, warehouse_id, financed_purchase]]))
+    st.success('Probability of churn is {}'.format(result))
+    st.text(result[0])
+
+
+if st.sidebar.button("Predict Future Revenue"):
+    result = predict(np.array([[order_tot, warehouse_id, financed_purchase]]))
+    st.text(result[0])
+
+
+
+####### Factor for Churn
+
+explainer = shap.TreeExplainer(clf)
+
+shap_values = explainer.shap_values(X)
+
+st.header('''Indicators of OPC''')
+plt.title('Feature Importance Based on SHAP Values')
+shap.summary_plot(shap_values, X)
+st.pyplot(bbox_inches='tight')
+st.write('---')
+
+plt.title('Feature Importance Based On SHAP Values')
+shap.summary_plot(shap_values, X, plot_type = "bar")
+st.pyplot(bbox_inches='tight')
+
+st.set_option('deprecation.showPyplotGlobalUse', False)
+
+st.set_option('deprecation.showPyplotGlobalUse', False)
+
+st.write(
+    'The bar graph above shows the level of importance each item has in relation to customers churn. As you can see, the order total has the greatest effect, and purchase method has the least effect. '
+)
+
+
+st.write('---')
+
+
+###### REVENUE PREDICTION 
+
+
+from sklearn import preprocessing
+
+le = preprocessing.LabelEncoder()
+df = df.apply(le.fit_transform)
+
+from sklearn.model_selection import train_test_split
+
+X = df.drop(columns=['order_tot']).values
+Y = df['warehouse_id'].values
+X_train, X_test, Y_train, Y_test = train_test_split(X,Y, test_size=0.2, random_state=20)
+
+from sklearn.tree import DecisionTreeClassifier
+dt = DecisionTreeClassifier(criterion='entropy', random_state=20)
+dt.fit(X_train, Y_train)
+dt_pred_train = dt.predict(X_train)
+
+from sklearn.metrics import f1_score
+dt_pred_train = dt.predict(X_train)
+print('Training Set Evaluation F1-Score=>', f1_score(Y_train, dt_pred_train, pos_label='positive', average='micro'))
+
+dt_pred_test = dt.predict(X_test)
+print('Testing Set Evaluation F1-Score=>', f1_score(Y_test, dt_pred_test, pos_label='positive', average='micro'))
+
+
+
+
+
+pickle_out = open("model.pickle","wb")
+pickle.dump(model, pickle_out)
+pickle_out.close()
+
+
+pickle_in = open("model.pickle","rb")
+model = pickle.load(pickle_in)
+
+st.title("Prediction of Revenue")
+
+st.subheader("Enter Order Total ")
+deg = st.text_input('', 0,1000)
+st.subheader("Enter warehouse ID")
+deg = st.text_input('', 0, 3)
+
+st.subheader("Predicted Revenue")
+st.code(float(model.predict([[deg]])))
